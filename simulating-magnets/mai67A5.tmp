@@ -1,0 +1,96 @@
+[gd_scene load_steps=12 format=3 uid="uid://donsbhqex4hb4"]
+
+[ext_resource type="Script" path="res://magnetic field calculator.gd" id="1_ly62s"]
+[ext_resource type="Script" path="res://cam_root.gd" id="1_npiqc"]
+[ext_resource type="Script" path="res://h_slider.gd" id="2_23dil"]
+[ext_resource type="Script" path="res://current.gd" id="2_r8y5b"]
+[ext_resource type="PackedScene" uid="uid://c0bwsnr5u6qbb" path="res://arrow.tscn" id="4_1em57"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_jieia"]
+sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+
+[sub_resource type="Sky" id="Sky_kg3gn"]
+sky_material = SubResource("ProceduralSkyMaterial_jieia")
+
+[sub_resource type="Environment" id="Environment_4smcv"]
+background_mode = 1
+background_color = Color(0.219501, 0.219501, 0.219501, 1)
+sky = SubResource("Sky_kg3gn")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_3mdn2"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_pscof"]
+top_radius = 0.01
+bottom_radius = 0.01
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_sw2o5"]
+top_radius = 0.0
+bottom_radius = 0.05
+height = 0.2
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_ly62s")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_4smcv")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
+shadow_enabled = true
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_3mdn2")
+
+[node name="Current" type="MeshInstance3D" parent="."]
+mesh = SubResource("CylinderMesh_pscof")
+script = ExtResource("2_r8y5b")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Current"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.04704, 0)
+mesh = SubResource("CylinderMesh_sw2o5")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="Current"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.740226, 0)
+mesh = SubResource("CylinderMesh_sw2o5")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="Current"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.369252, 0)
+mesh = SubResource("CylinderMesh_sw2o5")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="Current"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.0380971, 0)
+mesh = SubResource("CylinderMesh_sw2o5")
+
+[node name="MeshInstance3D5" type="MeshInstance3D" parent="Current"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.412341, 0)
+mesh = SubResource("CylinderMesh_sw2o5")
+
+[node name="MeshInstance3D6" type="MeshInstance3D" parent="Current"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.818342, 0)
+mesh = SubResource("CylinderMesh_sw2o5")
+
+[node name="Cam Root" type="Node3D" parent="." node_paths=PackedStringArray("camera", "arrow")]
+script = ExtResource("1_npiqc")
+camera = NodePath("Camera3D")
+plane = Plane(0, 1, 0, 0.2)
+arrow = NodePath("../Arrow")
+
+[node name="Camera3D" type="Camera3D" parent="Cam Root"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.303921, 2)
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="HSlider" type="HSlider" parent="CanvasLayer" node_paths=PackedStringArray("plane")]
+offset_right = 281.0
+offset_bottom = 16.0
+min_value = -100.0
+script = ExtResource("2_23dil")
+plane = NodePath("../../MeshInstance3D")
+
+[node name="Arrow" parent="." instance=ExtResource("4_1em57")]
+transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, 0, 0, 0)
+
+[connection signal="value_changed" from="CanvasLayer/HSlider" to="CanvasLayer/HSlider" method="_on_value_changed"]
