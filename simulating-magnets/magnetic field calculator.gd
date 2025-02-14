@@ -9,7 +9,9 @@ const u = 4 * PI # ignored 10^-7, ie scaled by 10^7
 @export var camera: Camera3D
 @export var plane: Plane
 
-var current = preload("res://current.tscn")
+var current = preload("res://current/standing current/current.tscn")
+var circular_current = preload("res://current/circular current/circular current.tscn")
+var solenoidal_current = preload("res://current/circular coil/circular coil.tscn")
 
 var total_current = 0
 var selected_current: Current = null
@@ -30,16 +32,75 @@ func scale_arrow_according_to(arr, dir: Vector3):
 
 func set_arrow_transparency(arr, dir: Vector3):
 	var mat = StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.albedo_color = Color("30488b")
-	mat.albedo_color.a = (dir.length() / 100)
-	arr.get_node("MeshInstance3D").mesh = arr.get_node("MeshInstance3D").mesh.duplicate()
-	arr.get_node("MeshInstance3D2").mesh = arr.get_node("MeshInstance3D2").mesh.duplicate()
-	arr.get_node("MeshInstance3D").mesh.surface_set_material(0, mat.duplicate())
-	arr.get_node("MeshInstance3D2").mesh.surface_set_material(0, mat.duplicate())
+	mat.albedo_color.v = (dir.length() / 500)
+	arr.get_node("Arrow").mesh = arr.get_node("Arrow").mesh.duplicate()
+	arr.get_node("Arrow").mesh.surface_set_material(0, mat.duplicate())
+
+func set_arrow_sound(dir: Vector3):
+	$AudioStreamPlayer.volume_db = min(dir.length() * 0.1 - 10, 5)
 
 func as_vector_2(vec: Vector3):
 	return Vector2(vec.x, vec.z)
+
+func circular_magnetic_field_strength(target_pos: Vector3, center: Vector3, r: float, normal: Vector3, I: float) -> Vector3:
+	# Define the magnetic constant μ0 (in SI units, μ0 = 4π × 10⁻⁷ T·m/A)
+	var mu0 = 4.0 * PI
+	# Pre-factor from Biot-Savart law: (μ0 I)/(4π)
+	var factor = mu0 * I / (4.0 * PI)
+	
+	# Initialize the magnetic field vector
+	var B = Vector3()
+	
+	# Normalize the provided normal so it really is a unit vector.
+	var n = normal.normalized()
+	
+	# To parameterize the circle, we need two perpendicular unit vectors (u and v) lying in the plane.
+	# We start with an arbitrary vector that is not parallel to n.
+	var arbitrary = Vector3(0, 1, 0)
+	if abs(n.dot(arbitrary)) > 0.99:
+		arbitrary = Vector3(1, 0, 0)
+	
+	# u and v will form an orthonormal basis for the plane of the loop.
+	var u = n.cross(arbitrary).normalized()
+	var v = n.cross(u).normalized()
+	
+	# Choose the number of steps in the integration (more steps → better accuracy).
+	var steps = 128
+	var dtheta = 2.0 * PI / steps
+	
+	# Loop over the circle
+	for i in range(steps):
+		var theta = i * dtheta
+		# Calculate the position of the current element on the loop.
+		# The point on the circle is: center + r*(u*cos(theta) + v*sin(theta))
+		var pos = center + r * (u * cos(theta) + v * sin(theta))
+		
+		# The differential length element (dL) along the loop is the derivative with respect to theta:
+		# dL/dtheta = -r*u*sin(theta) + r*v*cos(theta)
+		# Multiply by dtheta to get the actual segment.
+		var dL = r * (-u * sin(theta) + v * cos(theta)) * dtheta
+		
+		# The vector from the current element to the target position.
+		var R = target_pos - pos
+		var R_mag = R.length()
+		# Avoid division by zero if the target is exactly on the current element.
+		if R_mag == 0:
+			continue
+		
+		# Compute the differential magnetic field contribution using the Biot–Savart law.
+		var dB = factor * (dL.cross(R)) / pow(R_mag, 3)
+		
+		# Sum up the contributions.
+		B += dB
+	return B
+
+func solenoid_magnetic_field_strength(target_pos: Vector3, solenoid: Current, direction: Vector3) -> Vector3:
+	var B = Vector3.ZERO
+	for coil in solenoid.get_children():
+		if coil.name.begins_with("Border"):
+			B += circular_magnetic_field_strength(target_pos, coil.global_position, 0.1, direction, solenoid.curr_val)
+	return B
 
 func magnetic_field_strength(current_pos: Vector3, current_val: float, target_pos: Vector3, rotate_to_x = false, rotate_to_z = false) -> Vector3:
 	if rotate_to_z:
@@ -78,16 +139,44 @@ func update_dynamic_arrow():
 	var resultant_field = Vector3.ZERO
 	
 	for current in currents:
-		resultant_field += magnetic_field_strength(
-			current.global_position,
-			current.curr_val,
-			arrow.global_position,
-			current.rotate_to_x,
-			current.rotate_to_z
-		)
+		if selected_current != current:
+			current.get_node("Selected").visible = false
+		if current.is_circular:
+			var direction = Vector3.UP
+			if current.rotate_to_x:
+				direction = Vector3.FORWARD
+			elif current.rotate_to_z:
+				direction = Vector3.LEFT
+			resultant_field += circular_magnetic_field_strength(
+				arrow.global_position,
+				current.global_position,
+				0.5,
+				direction,
+				current.curr_val
+			)
+		elif current.is_solenoid:
+			var direction = Vector3.BACK
+			if current.rotate_to_x:
+				direction = Vector3.DOWN
+			elif current.rotate_to_z:
+				direction = Vector3.RIGHT
+			resultant_field += solenoid_magnetic_field_strength(
+				arrow.global_position,
+				current,
+				direction
+			)
+		else:
+			resultant_field += magnetic_field_strength(
+				current.global_position,
+				current.curr_val,
+				arrow.global_position,
+				current.rotate_to_x,
+				current.rotate_to_z
+			)
 	
 	rotate_arrow_towards(arrow, resultant_field)
 	scale_arrow_according_to(arrow, resultant_field)
+	set_arrow_sound(resultant_field)
 	
 	$CanvasLayer/Label2.text = "Magnetic Field Strength: " + str(resultant_field.length()) + "x10^7 T"
 
@@ -114,13 +203,38 @@ func _process(delta):
 		for current in currents:
 			if selected_current != current:
 				current.get_node("Selected").visible = false
-			resultant_field += magnetic_field_strength(
-				current.global_position,
-				current.curr_val,
-				arr.global_position,
-				current.rotate_to_x,
-				current.rotate_to_z
-			)
+			if current.is_circular:
+				var direction = Vector3.UP
+				if current.rotate_to_x:
+					direction = Vector3.FORWARD
+				elif current.rotate_to_z:
+					direction = Vector3.LEFT
+				resultant_field += circular_magnetic_field_strength(
+					arr.global_position,
+					current.global_position,
+					0.5,
+					direction,
+					current.curr_val
+				)
+			elif current.is_solenoid:
+				var direction = Vector3.BACK
+				if current.rotate_to_x:
+					direction = Vector3.DOWN
+				elif current.rotate_to_z:
+					direction = Vector3.RIGHT
+				resultant_field += solenoid_magnetic_field_strength(
+					arr.global_position,
+					current,
+					direction
+				)
+			else:
+				resultant_field += magnetic_field_strength(
+					current.global_position,
+					current.curr_val,
+					arr.global_position,
+					current.rotate_to_x,
+					current.rotate_to_z
+				)
 		rotate_arrow_towards(arr, resultant_field)
 		set_arrow_transparency(arr, resultant_field)
 
@@ -142,7 +256,10 @@ func _on_button_2_pressed():
 		if currents[i].curr_index == selected_current.curr_index:
 			currents.remove_at(i)
 			selected_current.queue_free()
-			selected_current = currents[0]
+			if len(currents) >= 1:
+				selected_current = currents[0]
+			else:
+				selected_current = null
 			break
 
 func _on_button_3_pressed():
@@ -150,11 +267,36 @@ func _on_button_3_pressed():
 		selected_current.rotate_to_x = false
 		selected_current.rotate_to_z = true
 		$CanvasLayer/Button3.text = "Direction: Z"
+		selected_current.global_position.x = 0
 	elif selected_current.rotate_to_z:
 		selected_current.rotate_to_z = false
 		selected_current.rotate_to_x = false
 		$CanvasLayer/Button3.text = "Direction: Y"
+		selected_current.global_position.y = 0
 	else:
 		selected_current.rotate_to_x = true
 		selected_current.rotate_to_z = false
 		$CanvasLayer/Button3.text = "Direction: X"
+		selected_current.global_position.z = 0
+
+
+func _on_button_4_pressed():
+	var cur = circular_current.instantiate()
+	add_child(cur)
+	cur.arrow = arrow
+	cur.camera = camera
+	cur.curr_index = total_current
+	total_current += 1
+	currents.append(cur)
+	selected_current = cur
+
+
+func _on_button_5_pressed():
+	var cur = solenoidal_current.instantiate()
+	add_child(cur)
+	cur.arrow = arrow
+	cur.camera = camera
+	cur.curr_index = total_current
+	total_current += 1
+	currents.append(cur)
+	selected_current = cur

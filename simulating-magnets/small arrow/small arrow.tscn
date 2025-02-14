@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://bqola1pqng8gh"]
+
+[ext_resource type="Script" path="res://small arrow/small_arrow.gd" id="1_biqnn"]
+[ext_resource type="ArrayMesh" uid="uid://cfuog8cnl78b4" path="res://assets/arrow.obj" id="2_n28cl"]
+
+[node name="Small Arrow" type="Node3D"]
+script = ExtResource("1_biqnn")
+color = Color(0.73, 0.0876, 0.0876, 1)
+
+[node name="Arrow" type="MeshInstance3D" parent="."]
+transform = Transform3D(3, 0, 0, 0, -1.31134e-07, -3, 0, 3, -1.31134e-07, 0, 0, 0)
+mesh = ExtResource("2_n28cl")
